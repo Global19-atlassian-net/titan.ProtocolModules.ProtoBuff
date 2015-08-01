@@ -1,0 +1,33 @@
+/******************************************************************************
+* Copyright (c) 2013, 2015  Ericsson AB
+* All rights reserved. This program and the accompanying materials
+* are made available under the terms of the Eclipse Public License v1.0
+* which accompanies this distribution, and is available at
+* http://www.eclipse.org/legal/epl-v10.html
+*
+* Contributors:
+* Gabor Szalai
+******************************************************************************/
+//
+//  File:               ProtoBuff_Types.ttcn
+//  Description:	Base types for PBPMG
+//  Rev:                R2A
+//  Prodnr:             CNL 113 795
+///////////////////////////////////////////////
+
+module ProtoBuff_Types {
+  type float double;
+  type integer int32;
+  type integer int64;
+  type integer uint32;
+  type integer uint64;
+  type integer sint32;
+  type integer sint64;
+  type integer fixed32;
+  type integer fixed64;
+  type integer sfixed32;
+  type integer sfixed64;
+  type boolean bool;
+  type universal charstring string;
+  type octetstring bytes;
+}
