@@ -12,7 +12,7 @@
 //
 //  File:               ProtoBuff_Base.cc
 //  Description:	      Encoder/Decoder of base types for PBPMG
-//  Rev:                R2A
+//  Rev:                R3A
 //  Prodnr:             CNL 113 795
 ///////////////////////////////////////////////
 #include "ProtoBuff_Base.hh"

@@ -257,11 +257,11 @@ function store_field(x){
   AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP x SUBSEP "FIELD_TYPE"]=field_type;
   AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP x SUBSEP "FIELD_NUM"]=field_num;
   AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP x SUBSEP "FIELD_PACKED"]=field_packed;
-  
+
   if(field_spec== "repeated"){
     AST[t_file SUBSEP "REPEATED_FIELDS" SUBSEP scope SUBSEP field_name SUBSEP "TYPE"] = field_type;
     AST[t_file SUBSEP "REPEATED_FIELDS" SUBSEP scope SUBSEP field_name SUBSEP "FIELD_PACKED"] = field_packed;
-  }
+  } 
 }
 
 # initialize the TTCN-3 reserved id map
@@ -503,7 +503,6 @@ BEGIN {
      delete ttcn3_ids;
      delete ttcn3_cc_id_map;
      fill_ttcn_ids();
-     
      for(i=1;i<ARGC;i++){
        fname=basename(ARGV[i]);
        match(fname,/\.proto/)
@@ -546,7 +545,8 @@ BEGIN {
 
            } else if ( token == "message"){
              push_state("MESSAGE_NAME");
-
+           } else if ( token == "oneof"){
+             push_state("ONEOF_NAME");
            } else if ( token == "enum"){
              push_state("ENUM_NAME");
            } else if (token == "option") {
@@ -600,6 +600,30 @@ BEGIN {
             AST[t_file SUBSEP "ENUMS" SUBSEP scope SUBSEP x SUBSEP "VAL"] = token;
             AST[t_file SUBSEP "ENUMS" SUBSEP scope SUBSEP "NUM_OF_ENUMERATED"]=x;
           }
+        } else if (parser_state== "ONEOF_NAME"){
+          if(token == "{"){
+            pop_state()
+            push_state("ONEOF_BODY")
+          } else {
+            field_spec="";
+            field_name=token;
+            field_type="oneof";
+            field_num=0;
+            field_packed=0;
+            store_field();
+            push_scope_stack(token);
+            AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP "NAME"] = token;
+            AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP "NUM_OF_FIELDS"] = 0;
+            AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP "ONEOFS"] = 1;
+          }
+        } else if (parser_state== "ONEOF_BODY"){
+          if(token == "}"){
+            pop_scope_stack();
+            pop_state();
+          } else if (token != ";"){
+            field_type=token;
+            push_state("FIELD_NAME");
+          }
           
         } else if (parser_state== "MESSAGE_BODY"){
           if(token == "}"){
@@ -618,12 +642,23 @@ BEGIN {
              push_state("OPTION");
           } else if ( token == "enum"){
              push_state("ENUM_NAME");
-          } else if (token == "extend") {
+          } else if ( token == "oneof"){
+             push_state("ONEOF_NAME");
+          } else if (token == "extend")  {
              push_state("SKIP_STRUCT");
              level=0;
-          }
+          } else if ((token == "extensions")||(token == "reserved"))  {
+             push_state("SKIP_FIELD");
+          } else if (token != ";"){
+            field_spec="optional";
+            field_name="";
+            field_type=token;
+            field_num=0;
+            field_packed=0;
+            push_state("FIELD_NAME");
           
-        } else if (parser_state== "OPTION"){
+          }
+        } else if ((parser_state== "OPTION")||(parser_state=="SKIP_FIELD")){
           if(token == ";"){
             pop_state();
           }
@@ -671,6 +706,7 @@ BEGIN {
             push_scope_stack(token);
             AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP "NAME"] = token;
             AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP "NUM_OF_FIELDS"] = 0;
+            AST[t_file SUBSEP "MESSAGES" SUBSEP scope SUBSEP "ONEOFS"] = 0;
           }
         } else if (parser_state== "PACKAGE"){
           package_name=token
@@ -879,12 +915,15 @@ delete SCOPE_DB;
     get_subarray(AST,f SUBSEP "MESSAGES",messages_data);
     get_array_length(messages_data,messages_list);
     for(m in messages_list){
-      ttcn3_message_name=conv2ttcn3typeid(m,f);
-      print "  external function f_encode_" ttcn3_message_name "(in "ttcn3_message_name" pdu) return octetstring " >> ttcn3_file_name;
-      print "  external function f_decode_" ttcn3_message_name "(in octetstring pdu) return "ttcn3_message_name >> ttcn3_file_name;
-      print "" >> ttcn3_file_name;
+      if(messages_data[m SUBSEP "ONEOFS"] != 1){
+        ttcn3_message_name=conv2ttcn3typeid(m,f);
+        print "  external function f_encode_" ttcn3_message_name "(in "ttcn3_message_name" pdu) return octetstring " >> ttcn3_file_name;
+        print "  external function f_decode_" ttcn3_message_name "(in octetstring pdu) return "ttcn3_message_name >> ttcn3_file_name;
+        print "" >> ttcn3_file_name;
+      }
     }
-
+    
+    
 
     print "" >> ttcn3_file_name;
     print "// definitions for enums" >> ttcn3_file_name;
@@ -913,6 +952,7 @@ delete SCOPE_DB;
       
       print "  }" >> ttcn3_file_name;
     }
+
     print "" >> ttcn3_file_name;
     print "// definitions for messages" >> ttcn3_file_name;
     print "" >> ttcn3_file_name;
@@ -920,8 +960,11 @@ delete SCOPE_DB;
     
     for(m in messages_list){
       ttcn3_message_name=conv2ttcn3typeid(m,f);
-      print "  type record " ttcn3_message_name "{ // " m >> ttcn3_file_name;
-      
+      if(messages_data[m SUBSEP "ONEOFS"] == 1){
+        print "  type union " ttcn3_message_name "{ // " m >> ttcn3_file_name;
+      }else {
+        print "  type record " ttcn3_message_name "{ // " m >> ttcn3_file_name;
+      } 
       num_of_fields= messages_data[m SUBSEP "NUM_OF_FIELDS" ];
       for(fn=1;fn<=num_of_fields;fn++){
         if(fn<num_of_fields){
@@ -936,6 +979,9 @@ delete SCOPE_DB;
         }
         f_type_name=get_scoped_id(messages_data[m SUBSEP fn SUBSEP "FIELD_TYPE"],m,f);
 #print "f_type_name "f_type_name
+        if(f_type_name == "oneof"){
+         f_type_name = ttcn3_message_name "_" conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]);
+        }
         if(messages_data[m SUBSEP fn SUBSEP "FIELD_SPEC"] == "repeated"){
           rep= "record of "
 #          LIST_DB[f_type_name]=f_type_name;
@@ -1001,30 +1047,36 @@ delete SCOPE_DB;
 
     for(m in messages_list){
       ttcn3_message_name=conv2ttcn3typeid(m,f);
-      
+      num_of_fields= messages_data[m SUBSEP "NUM_OF_FIELDS" ];
+      isoneof = messages_data[m SUBSEP "ONEOFS"];
       print "  size_t encode_"  cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, const " cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val);" >> hh_file_name
-      print "  size_t decode_" cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, "cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val,size_t max_length);" >> hh_file_name
+      if(isoneof==1)
+      {
+        print "  size_t decode_" cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, "cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val,size_t max_length,int ft);" >> hh_file_name
+      }else{
+        print "  size_t decode_" cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, "cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val,size_t max_length);" >> hh_file_name
+      }
       print "" >> hh_file_name
 
-      num_of_fields= messages_data[m SUBSEP "NUM_OF_FIELDS" ];
+      if(isoneof != 1)
+      {
+        print "OCTETSTRING "cc_name(module_name)"::f__encode__"cc_name(ttcn3_message_name)"(const "cc_name(module_name)"::"cc_name(ttcn3_message_name)"& pdu){" >> cc_file_name
+        print "  TTCN_Buffer buff;" >> cc_file_name
+        print "  encode_"  cc_name(ttcn3_message_name) "(buff,pdu);" >> cc_file_name
+        print "  OCTETSTRING ret_val;" >> cc_file_name
+        print "  buff.get_string(ret_val);" >> cc_file_name
+        print "  return ret_val;" >> cc_file_name
+        print "}" >> cc_file_name
+        print "" >> cc_file_name
 
-      print "OCTETSTRING "cc_name(module_name)"::f__encode__"cc_name(ttcn3_message_name)"(const "cc_name(module_name)"::"cc_name(ttcn3_message_name)"& pdu){" >> cc_file_name
-      print "  TTCN_Buffer buff;" >> cc_file_name
-      print "  encode_"  cc_name(ttcn3_message_name) "(buff,pdu);" >> cc_file_name
-      print "  OCTETSTRING ret_val;" >> cc_file_name
-      print "  buff.get_string(ret_val);" >> cc_file_name
-      print "  return ret_val;" >> cc_file_name
-      print "}" >> cc_file_name
-      print "" >> cc_file_name
-
-      print cc_name(module_name)"::"cc_name(ttcn3_message_name)" "cc_name(module_name)"::f__decode__"cc_name(ttcn3_message_name)"(const OCTETSTRING& pdu){" >> cc_file_name
-      print "  "cc_name(module_name)"::"cc_name(ttcn3_message_name)" ret_val;" >> cc_file_name
-      print "  TTCN_Buffer buff(pdu);" >> cc_file_name
-      print "  decode_"  cc_name(ttcn3_message_name) "(buff,ret_val,buff.get_len());" >> cc_file_name
-      print "  return ret_val;" >> cc_file_name
-      print "}" >> cc_file_name
-      print "" >> cc_file_name
-
+        print cc_name(module_name)"::"cc_name(ttcn3_message_name)" "cc_name(module_name)"::f__decode__"cc_name(ttcn3_message_name)"(const OCTETSTRING& pdu){" >> cc_file_name
+        print "  "cc_name(module_name)"::"cc_name(ttcn3_message_name)" ret_val;" >> cc_file_name
+        print "  TTCN_Buffer buff(pdu);" >> cc_file_name
+        print "  decode_"  cc_name(ttcn3_message_name) "(buff,ret_val,buff.get_len());" >> cc_file_name
+        print "  return ret_val;" >> cc_file_name
+        print "}" >> cc_file_name
+        print "" >> cc_file_name
+      }
 
       print "  size_t encode_"  cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, const " cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val){" >> cc_file_name
       print "    size_t ret_val=0;" >> cc_file_name
@@ -1032,7 +1084,12 @@ delete SCOPE_DB;
         if(messages_data[m SUBSEP fn SUBSEP "FIELD_SPEC"] == "optional"){
           opt= "()"
           print "    if(val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"().is_present()) {" >> cc_file_name
-        } else {
+        } else if(isoneof == 1){
+          opt=""
+          iftype="if";
+          if (fn>1){iftype="else if"}
+          print "    "iftype"(val.get_selection() == "cc_name(module_name)"::"cc_name(ttcn3_message_name)"::ALT_"cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))") {" >> cc_file_name
+       }else {
           opt=""
           print "    {" >> cc_file_name
         }
@@ -1073,6 +1130,9 @@ delete SCOPE_DB;
           print "      ret_val+=encode_tag_length(buff,"messages_data[m SUBSEP fn SUBSEP "FIELD_NUM"]",2,field_len);" >> cc_file_name
           print "      buff.put_buf(buff2);" >> cc_file_name
           print "      ret_val+=field_len;" >> cc_file_name
+        } else if (f_type_name == "oneof"){
+          f_type_name = ttcn3_message_name "_" conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]);
+          print "      ret_val+=encode_"cc_name(f_type_name)"(buff,val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"()"opt");" >> cc_file_name
         } else {
           print "      ret_val+=encode_tag_length(buff,"messages_data[m SUBSEP fn SUBSEP "FIELD_NUM"]","wire_type");" >> cc_file_name
           print "      ret_val+=encode_"cc_name(f_type_name)"(buff,val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"()"opt");" >> cc_file_name
@@ -1083,8 +1143,12 @@ delete SCOPE_DB;
       print "    return ret_val;" >> cc_file_name
       print "  }" >> cc_file_name
       print "" >> cc_file_name
-
-      print "  size_t decode_" cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, "cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val,size_t max_length){" >> cc_file_name
+      if(isoneof == 1){
+        print "  size_t decode_" cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, "cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val,size_t max_length,int ft){" >> cc_file_name
+        print "  size_t fl=max_length;" >> cc_file_name
+      }else{
+        print "  size_t decode_" cc_name(ttcn3_message_name) "(TTCN_Buffer& buff, "cc_name(module_name)"::"cc_name(ttcn3_message_name)"&val,size_t max_length){" >> cc_file_name
+      }
       print "    size_t ret_val=0;" >> cc_file_name
       for(fn=1;fn<=num_of_fields;fn++){
         if(messages_data[m SUBSEP fn SUBSEP "FIELD_SPEC"] == "optional"){  # set optional field omit if unbound
@@ -1094,21 +1158,26 @@ delete SCOPE_DB;
           print "    if(!val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"().is_bound()) val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"()=NULL_VALUE;" >> cc_file_name
         }
       }
-      print "    while(ret_val<max_length){" >> cc_file_name
-      print "      char wt=0;" >> cc_file_name
-      print "      size_t fl=0;" >> cc_file_name
-      print "      int ft=0;" >> cc_file_name
-      print "      ret_val+=decode_tag_length(buff,ft,wt,fl);" >> cc_file_name
+      if(isoneof != 1){
+        print "    while(ret_val<max_length){" >> cc_file_name
+        print "      char wt=0;" >> cc_file_name
+        print "      size_t fl=0;" >> cc_file_name
+        print "      int ft=0;" >> cc_file_name
+        print "      ret_val+=decode_tag_length(buff,ft,wt,fl);" >> cc_file_name
+      }
       print "      switch(ft){" >> cc_file_name
+      oneofdata = "";
       for(fn=1;fn<=num_of_fields;fn++){
-        print "        case "messages_data[m SUBSEP fn SUBSEP "FIELD_NUM"]": {" >> cc_file_name
+       f_type_name=get_scoped_id(messages_data[m SUBSEP fn SUBSEP "FIELD_TYPE"],m,f);
+        if (f_type_name != "oneof"){
+          print "        case "messages_data[m SUBSEP fn SUBSEP "FIELD_NUM"]": {" >> cc_file_name
+         }
         if(messages_data[m SUBSEP fn SUBSEP "FIELD_SPEC"] == "optional"){
           opt= "()"
         } else {
           opt=""
         }
-        f_type_name=get_scoped_id(messages_data[m SUBSEP fn SUBSEP "FIELD_TYPE"],m,f);
-        f_scopped_type_name=get_scoped_scope_id(messages_data[m SUBSEP fn SUBSEP "FIELD_TYPE"],m,f);
+         f_scopped_type_name=get_scoped_scope_id(messages_data[m SUBSEP fn SUBSEP "FIELD_TYPE"],m,f);
         wire_type=SCOPE_DB[ f_scopped_type_name SUBSEP "WIRE_TYPE" ];
         
         if(messages_data[m SUBSEP fn SUBSEP "FIELD_SPEC"] == "repeated"){
@@ -1122,24 +1191,45 @@ delete SCOPE_DB;
             print "            ret_val+=decode_"cc_name(f_type_name)"(buff,val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"()[val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"().size_of()],fl);" >> cc_file_name
           }
         
+        }else if (f_type_name == "oneof"){
+          f_type_name = ttcn3_message_name "_" conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]);
+           oneofdata = oneofdata "\n            ret_val2+=decode_"cc_name(f_type_name)"(buff,val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"()"opt",fl,ft);";
+          f_type_name = "oneof";
         } else {
           print "            ret_val+=decode_"cc_name(f_type_name)"(buff,val."cc_name(conv2ttcn3id(messages_data[m SUBSEP fn SUBSEP "FIELD_NAME"]))"()"opt",fl);" >> cc_file_name
         }
-        print "            " >> cc_file_name
-        print "          }" >> cc_file_name
-        print "          break;" >> cc_file_name
+        if (f_type_name != "oneof"){
+          print "            " >> cc_file_name
+          print "          }" >> cc_file_name
+          print "          break;" >> cc_file_name
+        }
       }
       print "        default:" >> cc_file_name
-      print "          ret_val+=decodeunknown(buff,wt,fl);" >> cc_file_name
+      if(oneofdata!=""){
+        print "            size_t ret_val2=0;" >> cc_file_name
+        print oneofdata >> cc_file_name
+        print "            ret_val+=ret_val2;" >> cc_file_name
+        print "            if(ret_val2==0){" >> cc_file_name
+        print "              ret_val+=decodeunknown(buff,wt,fl);" >> cc_file_name
+        print "            }" >> cc_file_name
+      }
+      else if(isoneof != 1){
+        print "          ret_val+=decodeunknown(buff,wt,fl);" >> cc_file_name
+      }
       print "          break;" >> cc_file_name
       print "      }" >> cc_file_name
-      print "    }" >> cc_file_name
+      if(isoneof != 1){
+        print "    }" >> cc_file_name
+      }  
       print "    return ret_val;" >> cc_file_name
       print "  }" >> cc_file_name
 
       print "" >> cc_file_name
 
-      
+        
+        
+        
+              
     } # message
 
   }
