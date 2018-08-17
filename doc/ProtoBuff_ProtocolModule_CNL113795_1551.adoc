@@ -1,0 +1,98 @@
+---
+Author: Tímea Moder
+Version: 1551-CNL 113 795, Rev. B
+Date: 2018-03-08
+
+---
+= ProtoBuff Protocol Module for TTCN-3 Toolset with TITAN, Description
+:author: Tímea Moder
+:revnumber: 1551-CNL 113 795, Rev. B
+:revdate: 2018-03-08
+:toc:
+
+=== How to Read This Document
+
+This is the Function Description of the `ProtoBuff` Protocol Module (PBPMG). The `ProtoBuff` Protocol Module is developed for the TTCN-3 Toolset with TITAN.
+
+=== Presumed Knowledge
+
+To use this protocol module the knowledge of the TTCN-3 language <<_1, [1]>> is essential.
+
+Basic knowledge of the Google Protocol Buffers protocol <<_3, [3]>> is valuable to use this protocol module.
+
+= Functionality
+
+== Product Contents, Structure
+
+The major parts of PBPMG are:
+
+a. _PBPMG.awk_ and _PBPMG.sh_ scripts: +
+This is the most important part of the product. The scripts parse the _.proto_ files and produces the TTCN-3 representation of them and the encoder/decoder functions
+
+b. Encoder/decoder functions for base types.
+
+== Protocol Version Implemented
+
+The PBPMG based on the 2.5.0 and 3.0.0 version of the Google protocol Buffer
+
+== Modified and Non-Implemented Protocol Elements
+
+None.
+
+== Ericsson-Specific Changes
+
+There is no Ericsson specific change in this product.
+
+== Backward Incompatibilities
+
+None.
+
+== System Requirements
+
+Protocol modules are a set of TTCN-3 source code files that can be used as part of TTCN-3 test suites only. Hence, protocol modules alone do not put specific requirements on the system used. However, in order to compile and execute a TTCN-3 test suite using the set of protocol modules the following system requirements must be satisfied:
+
+* TITAN TTCN-3 Test Executor version CRL 113 200/6 R3A (6.3.pl0) or higher installed. For installation guide see <<_2, [2]>>.
+
+NOTE: This version of the protocol module is not compatible with TITAN releases earlier than CRL 113 200/6 R3A.
+
+* GNU AWK 3.1.8 or later
+
+= Feature List
+
+== Script Operation
+
+The PBPMG reads the definitions from _.proto_ files and translates them into TTCN-3 type definitions and C++ encoder decoder functions.
+
+== Using the Script
+
+In order to translate the _.proto_ files you need to use GNU Awk 3.1.8 or newer.
+
+Usage: `PBPMG.sh <proto files>`
+
+= Functional Specification
+
+[[encoding-decoding-and-other-related-functions]]
+== Encoding/Decoding and Other Related Functions
+
+The PBPMG generates encoder/ decoder function for every messages defined in the _.proto_ files
+
+Prototype of the functions:
+
+[source]
+----
+external function f_encode_<message_type_name>(in <message_type_name> pdu) return octetstring
+
+external function f_decode_<message_type_name> (in octetstring pdu) return <message_type_name>
+----
+
+= References
+
+[[_1]]
+[1] ETSI ES 201 873-1 v3.2.1 (2007-02)The +
+Testing and Test Control Notation version 3. Part 1: Core Language
+
+[[_2]]
+[2] User Guide for TITAN TTCN–3 Test Executor
+
+[[_3]]
+[3] http://code.google.com/p/protobuf/
